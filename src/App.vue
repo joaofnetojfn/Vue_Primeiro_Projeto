@@ -1,5 +1,11 @@
 <template>
   <div id="todo">
+    <ul>
+      <li v-for="(erro, index) of errors" :key="index">
+          campo<b>{{erro.field}}</b> - {{erro.defaultMessage}}
+      </li>
+    </ul>
+
     <div id="app" class="d-flex align-items-center justify-content-center ">
         <b-form @submit="onSubmit" @reset="onReset" v-if="show" class="d-flex align-items-center justify-content-center flex-fill">
             <b-form-input
@@ -23,7 +29,7 @@
             placeholder="Porcentagem"  type="number"
             :min="1" :max="100"
             required
-            v-model.number="form.porcento" class="estiloInp" >
+            v-model.number="form.porcentagem" class="estiloInp" >
 
           <b-button type="submit" variant="outline-primary alinhaBtn ">Send</b-button>
           <!--<b-button type="reset" variant="danger alinhaBtn">Reset</b-button>-->
@@ -35,14 +41,22 @@
 
         <ListaTabela
         v-bind:cabecalhoTitulo="msg"
+        :perPageT="perPage"
+        :rowsT="rows"
+        :onDelete="onDelete"
+        :onEdit = "onEdit"
+        :paginas = "paginas"
         v-bind:popular="tabelaPopula"
         v-bind:titulos="['Primeiro Nome','Segundo Nome', 'Porcentagem']"></ListaTabela>
+
 
         <div id="grafico">
           <PieChart
             :chartData="this.datacollection"
             ></PieChart>
         </div>
+
+
       </div>
   </div>
 
@@ -51,6 +65,7 @@
 <script>
 import ListaTabela from './componentes/ListaTabela.vue';
 import PieChart from './componentes/PieChart.vue';
+import Pessoa from './services/Pessoa.js'
 
 export default {
   name: 'app',
@@ -64,39 +79,113 @@ export default {
       msg: 'DATA',
       texto:'Tabela e grafico dos dados inserito no formulario',
        form: {
+          _id:'',
           primeiroNome: '',
           segundoNome:'',
-          porcento: null,
-          id:0
+          porcentagem: null
         },
         show: true,
         tabelaPopula: [],
         datacollection: null,
-        color:[]
+        color:[],
+        errors:[],
+        labels:[],
+        valorGrafico:[],
+        perPage: null,
+        currentPage: this.currentPage !== null ? this.currentPage = 1 : this.currentPage = this.currentPage,
+        rows: null
     }
   },
   mounted() {
-    //this.fillData()
-    //console.log( this.datacollection)
-    // console.log( this.tabelaPopula)
-
+    this.lista(this.currentPage);
   },
   methods: {
+      lista(pagina){
+         Pessoa.listar(pagina).then(resposta =>{
+          this.tabelaPopula = resposta.data.docs;
+          this.currentPage = resposta.data.page;
+          this.perPage = resposta.data.limit;
+          this.rows = resposta.data.total;
+          this.chamaGrafico();
+        });
+      },
+      paginas(pagina){
+        this.lista(pagina)
+      },
+      chamaGrafico(){
+        if(this.tabelaPopula.length > 0){
+             this.labels =  []
+             this.valorGrafico =  []
+            this.tabelaPopula.forEach(element => {
+              //alert(JSON.stringify(element.primeiroNome))
+              this.labels.push(`${element.primeiroNome} ${element.segundoNome}`)
+              this.valorGrafico.push(`${element.porcentagem}`)
+              this.fillData(
+              {
+                labelsMy: this.labels,
+                dataMy:  this.valorGrafico
+              })
+            });
+        }
+      },
       onSubmit(evt) {
         evt.preventDefault()
-        //console.log(this.tabelaPopula);
-        this.form.id ++;
-        this.tabelaPopula.push({...this.form});
-        this.fillData(
-          {
-            labelsMy:[`${this.form.primeiroNome} ${this.form.segundoNome}`],
-            dataMy:[this.form.porcento]
-            })
-        // this.labelsMy.push( this.form.primeiroNome + ' ' + this.form.segundoNome);
-        // this.dataMy.data.push(...this.form.porcento);
-        // this.dataMy.backgroundColor.push(Math.floor(Math.random()*16777215).toString(16));
+        if(!this.form._id){
+          const data = {
+            primeiroNome: this.form.primeiroNome,
+            segundoNome: this.form.segundoNome,
+            porcentagem: this.form.porcentagem
+          }
+            Pessoa.salvar(data).then(resposta =>{
+              this.form = {}
+              this.errors = []
+              this.paginas(this.currentPage);
+              alert("Pessoa Salvo com sucesso");
 
+          })
+          .catch( error => {
+            this.errors = error.response.data.errors
+          })
+        }else{
+          const data = {
+            id: this.form._id,
+            primeiroNome: this.form.primeiroNome,
+            segundoNome: this.form.segundoNome,
+            porcentagem: this.form.porcentagem
+          }
+          Pessoa.atualizar(data).then(resposta =>{
+              this.form = {}
+              this.errors = []
+              alert("Pessoa ATUALIZADA com sucesso");
+              this.paginas(this.currentPage);
+          })
+          .catch( error => {
+            this.errors = error.response.data.errors
+          })
+        }
 
+      },
+      fillData ({labelsMy,dataMy}) {
+        this.color.push(`#${Math.floor(Math.random()*16777215).toString(16)}`)
+        this.datacollection = {
+          labels: [...labelsMy] ,
+          datasets: [
+            {
+              label: 'Data One',
+              backgroundColor:[...this.color],
+              data: [...dataMy]
+            }
+          ]
+        }
+      },
+      onDelete(idPessoa){
+         Pessoa.deletar(idPessoa).then(resposta =>{
+              alert("Pessoa Deletada com sucesso");
+              this.paginas(this.currentPage-1);
+          })
+      },
+      onEdit(pessoa){
+        this.form = pessoa
       },
       onReset(evt) {
         evt.preventDefault()
@@ -109,28 +198,15 @@ export default {
         this.$nextTick(() => {
           this.show = true
         })
-      },
-      fillData ({labelsMy,dataMy}) {
-        this.color.push(`#${Math.floor(Math.random()*16777215).toString(16)}`)
-        this.datacollection = {
-          labels: (this.tabelaPopula.length > 1) ? [...this.datacollection.labels, labelsMy] : [labelsMy],
-          datasets: [
-            {
-              label: 'Data One',
-              backgroundColor: (this.tabelaPopula.length > 1) ?  [...this.color, this.color]: [ this.color],
-              data:  (this.tabelaPopula.length > 1) ? [...this.datacollection.datasets[0].data, dataMy] : [dataMy]
-            }
-          ]
-        }
       }
   },
   watch: {
     form:{
       handler:function(val){
-        if(val.porcento > 100){
-          this.form.porcento = 100;
+        if(val.porcentagem > 100){
+          this.form.porcentagem = 100;
         }else if(val.porcento === ''){
-          this.form.porcento = 0;
+          this.form.porcentagem = 0;
         }
       },
       deep:true
